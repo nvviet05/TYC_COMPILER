@@ -25,19 +25,127 @@ options {
 }
 
 // ============================================================
-// PARSER RULES (sẽ implement ở section 6.2)
+// PARSER RULES
 // ============================================================
 
+// -------------------- PROGRAM --------------------
 program: (structDecl | funcDecl)* EOF;
 
-// ... (parser rules sẽ được thêm)
+// -------------------- STRUCT DECLARATION --------------------
+structDecl: STRUCT ID LBRACE memberDecl* RBRACE SEMI;
+
+memberDecl: typeSpec ID SEMI;
+
+// -------------------- FUNCTION DECLARATION --------------------
+funcDecl: typeSpec? ID LPAREN paramList? RPAREN blockStmt;
+
+paramList: param (COMMA param)*;
+
+param: typeSpec ID;
+
+// -------------------- TYPE SPECIFIER --------------------
+typeSpec: INT | FLOAT | STRING | VOID | ID;
+
+// -------------------- STATEMENTS --------------------
+blockStmt: LBRACE stmt* RBRACE;
+
+stmt: varDecl
+    | ifStmt
+    | whileStmt
+    | forStmt
+    | switchStmt
+    | breakStmt
+    | continueStmt
+    | returnStmt
+    | exprStmt
+    | blockStmt
+    ;
+
+// Variable declaration
+varDecl: (AUTO | typeSpec) ID (ASSIGN expr)? SEMI;
+
+// If statement
+ifStmt: IF LPAREN expr RPAREN stmt (ELSE stmt)?;
+
+// While statement
+whileStmt: WHILE LPAREN expr RPAREN stmt;
+
+// For statement
+forStmt: FOR LPAREN forInit? SEMI expr? SEMI forUpdate? RPAREN stmt;
+
+forInit: (AUTO | typeSpec) ID ASSIGN expr
+       | expr
+       ;
+
+forUpdate: expr;
+
+// Switch statement
+switchStmt: SWITCH LPAREN expr RPAREN LBRACE caseClause* defaultClause? RBRACE;
+
+caseClause: CASE expr COLON stmt*;
+
+defaultClause: DEFAULT COLON stmt*;
+
+// Simple statements
+breakStmt: BREAK SEMI;
+continueStmt: CONTINUE SEMI;
+returnStmt: RETURN expr? SEMI;
+exprStmt: expr SEMI;
+
+// -------------------- EXPRESSIONS --------------------
+// Precedence from lowest to highest (top to bottom)
+
+expr: assignExpr;
+
+// Assignment (right associative)
+assignExpr: orExpr (ASSIGN assignExpr)?;
+
+// Logical OR
+orExpr: andExpr (OR andExpr)*;
+
+// Logical AND
+andExpr: eqExpr (AND eqExpr)*;
+
+// Equality
+eqExpr: relExpr ((EQ | NEQ) relExpr)*;
+
+// Relational
+relExpr: addExpr ((LT | GT | LE | GE) addExpr)*;
+
+// Additive
+addExpr: mulExpr ((PLUS | MINUS) mulExpr)*;
+
+// Multiplicative
+mulExpr: unaryExpr ((MUL | DIV | MOD) unaryExpr)*;
+
+// Unary (prefix)
+unaryExpr: (NOT | MINUS | PLUS | PLUS_PLUS | MINUS_MINUS) unaryExpr
+         | postfixExpr
+         ;
+
+// Postfix
+postfixExpr: primaryExpr (PLUS_PLUS | MINUS_MINUS | DOT ID | LPAREN argList? RPAREN)*;
+
+// Primary
+primaryExpr: ID
+           | INT_LIT
+           | FLOAT_LIT
+           | STRING_LIT
+           | LPAREN expr RPAREN
+           | structLit
+           ;
+
+// Struct literal
+structLit: LBRACE (expr (COMMA expr)*)? RBRACE;
+
+// Argument list
+argList: expr (COMMA expr)*;
 
 // ============================================================
 // LEXER RULES
 // ============================================================
 
-// -------------------- KEYWORDS --------------------
-// Phải đặt TRƯỚC ID rule
+// -------------------- KEYWORDS (must be before ID) --------------------
 AUTO: 'auto';
 BREAK: 'break';
 CASE: 'case';
@@ -55,14 +163,12 @@ SWITCH: 'switch';
 VOID: 'void';
 WHILE: 'while';
 
-// -------------------- OPERATORS --------------------
-// Operators dài trước, ngắn sau
-
+// -------------------- OPERATORS (longer before shorter) --------------------
 // Increment/Decrement
 PLUS_PLUS: '++';
 MINUS_MINUS: '--';
 
-// Relational (2 chars trước)
+// Relational (2 chars first)
 LE: '<=';
 GE: '>=';
 EQ: '==';
@@ -97,8 +203,7 @@ COLON: ':';
 
 // -------------------- LITERALS --------------------
 
-// Float literal - phải đặt TRƯỚC INT_LIT
-// Pattern: digits.digits? exponent? | digits? .digits exponent? | digits exponent
+// Float literal - must be before INT_LIT
 FLOAT_LIT: DIGIT+ '.' DIGIT* EXPONENT?
          | DIGIT* '.' DIGIT+ EXPONENT?
          | DIGIT+ EXPONENT
@@ -110,7 +215,7 @@ INT_LIT: DIGIT+;
 // String literal - valid string
 STRING_LIT: '"' STRING_CHAR* '"';
 
-// -------------------- IDENTIFIER --------------------
+// -------------------- IDENTIFIER (must be after keywords) --------------------
 ID: (LETTER | '_') (LETTER | DIGIT | '_')*;
 
 // -------------------- WHITESPACE & COMMENTS --------------------
@@ -120,22 +225,21 @@ LINE_COMMENT: '//' ~[\r\n]* -> skip;
 
 BLOCK_COMMENT: '/*' .*? '*/' -> skip;
 
-// -------------------- ERROR TOKENS --------------------
-// Phải đặt CUỐI CÙNG
+// -------------------- ERROR TOKENS (must be last) --------------------
 
-// Illegal escape in string
+// Illegal escape in string - must be before UNCLOSE_STRING
 ILLEGAL_ESCAPE: '"' STRING_CHAR* ESC_ILLEGAL
     {
-        self.text = self.text[1:]
+self.text = self.text[1:]
     };
 
 // Unclosed string
 UNCLOSE_STRING: '"' STRING_CHAR*
     {
-        self.text = self.text[1:]
+self.text = self.text[1:]
     };
 
-// Unrecognized character
+// Unrecognized character - catch all
 ERROR_CHAR: .;
 
 // -------------------- FRAGMENTS --------------------
@@ -146,143 +250,8 @@ fragment EXPONENT: [eE] [+-]? DIGIT+;
 // String character: any char except quote, backslash, newline, OR valid escape
 fragment STRING_CHAR: ~["\\\r\n] | ESC_VALID;
 
-// Valid escape sequences
+// Valid escape sequences: \b \f \n \r \t \" \\
 fragment ESC_VALID: '\\' [bfnrt"\\];
 
 // Invalid escape sequence (anything else after backslash)
-fragment ESC_ILLEGAL: '\\' ~[bfnrt"\\]
-                    | '\\';  // backslash at end
-
-// ============================================================
-// PARSER RULES
-// ============================================================
-
-// -------------------- PROGRAM --------------------
-program: (structDecl | funcDecl)* EOF;
-
-// -------------------- STRUCT DECLARATION --------------------
-structDecl: STRUCT ID LBRACE memberDecl* RBRACE SEMI;
-
-memberDecl: typeSpec ID SEMI;
-
-// -------------------- FUNCTION DECLARATION --------------------
-funcDecl: typeSpec? ID LPAREN paramList? RPAREN blockStmt;
-
-paramList: param (COMMA param)*;
-
-param: typeSpec ID;
-
-// -------------------- TYPE SPECIFIER --------------------
-typeSpec: INT       # IntType
-        | FLOAT     # FloatType
-        | STRING    # StringType
-        | VOID      # VoidType
-        | ID        # StructType
-        ;
-
-// -------------------- STATEMENTS --------------------
-blockStmt: LBRACE stmt* RBRACE;
-
-stmt: varDecl
-    | assignStmt
-    | ifStmt
-    | whileStmt
-    | forStmt
-    | switchStmt
-    | breakStmt
-    | continueStmt
-    | returnStmt
-    | exprStmt
-    | blockStmt
-    ;
-
-// Variable declaration
-varDecl: (AUTO | typeSpec) ID (ASSIGN expr)? SEMI;
-
-// Assignment statement
-assignStmt: lhs ASSIGN expr SEMI;
-
-lhs: ID (DOT ID)*;  // Identifier or member access
-
-// If statement
-ifStmt: IF LPAREN expr RPAREN stmt (ELSE stmt)?;
-
-// While statement
-whileStmt: WHILE LPAREN expr RPAREN stmt;
-
-// For statement
-forStmt: FOR LPAREN forInit? SEMI expr? SEMI forUpdate? RPAREN stmt;
-
-forInit: (AUTO | typeSpec) ID ASSIGN expr  // var decl without semi
-       | lhs ASSIGN expr                    // assignment without semi
-       ;
-
-forUpdate: expr;
-
-// Switch statement
-switchStmt: SWITCH LPAREN expr RPAREN LBRACE caseClause* defaultClause? RBRACE;
-
-caseClause: CASE expr COLON stmt*;
-
-defaultClause: DEFAULT COLON stmt*;
-
-// Simple statements
-breakStmt: BREAK SEMI;
-continueStmt: CONTINUE SEMI;
-returnStmt: RETURN expr? SEMI;
-exprStmt: expr SEMI;
-
-// -------------------- EXPRESSIONS --------------------
-// Precedence từ thấp → cao (top to bottom)
-
-expr: assignExpr;
-
-// Assignment (right associative)
-assignExpr: orExpr (ASSIGN assignExpr)?;
-
-// Logical OR
-orExpr: andExpr (OR andExpr)*;
-
-// Logical AND
-andExpr: eqExpr (AND eqExpr)*;
-
-// Equality
-eqExpr: relExpr ((EQ | NEQ) relExpr)*;
-
-// Relational
-relExpr: addExpr ((LT | GT | LE | GE) addExpr)*;
-
-// Additive
-addExpr: mulExpr ((PLUS | MINUS) mulExpr)*;
-
-// Multiplicative
-mulExpr: unaryExpr ((MUL | DIV | MOD) unaryExpr)*;
-
-// Unary (prefix)
-unaryExpr: (NOT | MINUS | PLUS | PLUS_PLUS | MINUS_MINUS) unaryExpr
-         | postfixExpr
-         ;
-
-// Postfix
-postfixExpr: primaryExpr postfixOp*;
-
-postfixOp: PLUS_PLUS                    # PostIncrement
-         | MINUS_MINUS                  # PostDecrement
-         | DOT ID                       # MemberAccess
-         | LPAREN argList? RPAREN       # FuncCall
-         ;
-
-// Primary
-primaryExpr: ID                         # Identifier
-           | INT_LIT                    # IntLiteral
-           | FLOAT_LIT                  # FloatLiteral
-           | STRING_LIT                 # StringLiteral
-           | LPAREN expr RPAREN         # ParenExpr
-           | structLit                  # StructLiteral
-           ;
-
-// Struct literal
-structLit: LBRACE (expr (COMMA expr)*)? RBRACE;
-
-// Argument list
-argList: expr (COMMA expr)*;
+fragment ESC_ILLEGAL: '\\' ~[bfnrt"\\];
