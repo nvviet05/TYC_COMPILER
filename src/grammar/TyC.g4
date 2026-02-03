@@ -29,194 +29,233 @@ options {
 // ============================================================
 
 // -------------------- PROGRAM --------------------
-program: (structDecl | funcDecl)* EOF;
+program: (structs | functions)* EOF;
 
 // -------------------- STRUCT DECLARATION --------------------
-structDecl: STRUCT ID LBRACE memberDecl* RBRACE SEMI;
+structs: STRUCT ID LBRACE struct_member* RBRACE SEMI;
 
-memberDecl: typeSpec ID SEMI;
+struct_member: explicit_type ID SEMI;
 
 // -------------------- FUNCTION DECLARATION --------------------
-funcDecl: typeSpec? ID LPAREN paramList? RPAREN blockStmt;
+// Hỗ trợ cả return type tường minh và inferred (bỏ qua return type)
+functions: (return_type ID | ID) LPAREN parameter_list? RPAREN block_statement;
 
-paramList: param (COMMA param)*;
+return_type: explicit_type | VOID;
 
-param: typeSpec ID;
+parameter_list: parameter_decl (COMMA parameter_decl)*;
+
+parameter_decl: explicit_type ID;
 
 // -------------------- TYPE SPECIFIER --------------------
-typeSpec: INT | FLOAT | STRING | VOID | ID;
+explicit_type: INT | FLOAT | STRING | ID;
+
+type: INT | FLOAT | STRING | ID | AUTO;
 
 // -------------------- STATEMENTS --------------------
-blockStmt: LBRACE stmt* RBRACE;
+block_statement: LBRACE list_statement? RBRACE;
 
-stmt: varDecl
-    | ifStmt
-    | whileStmt
-    | forStmt
-    | switchStmt
-    | breakStmt
-    | continueStmt
-    | returnStmt
-    | exprStmt
-    | blockStmt
-    ;
+list_statement: statement list_statement | statement;
 
-// Variable declaration
-varDecl: (AUTO | typeSpec) ID (ASSIGN expr)? SEMI;
-
-// If statement
-ifStmt: IF LPAREN expr RPAREN stmt (ELSE stmt)?;
-
-// While statement
-whileStmt: WHILE LPAREN expr RPAREN stmt;
-
-// For statement
-forStmt: FOR LPAREN forInit? SEMI expr? SEMI forUpdate? RPAREN stmt;
-
-forInit: (AUTO | typeSpec) ID ASSIGN expr
-       | expr
-       ;
-
-forUpdate: expr;
-
-// Switch statement
-switchStmt: SWITCH LPAREN expr RPAREN LBRACE caseClause* defaultClause? RBRACE;
-
-caseClause: CASE expr COLON stmt*;
-
-defaultClause: DEFAULT COLON stmt*;
-
-// Simple statements
-breakStmt: BREAK SEMI;
-continueStmt: CONTINUE SEMI;
-returnStmt: RETURN expr? SEMI;
-exprStmt: expr SEMI;
-
-// -------------------- EXPRESSIONS --------------------
-// Precedence from lowest to highest (top to bottom)
-
-expr: assignExpr;
-
-// Assignment (right associative)
-assignExpr: orExpr (ASSIGN assignExpr)?;
-
-// Logical OR
-orExpr: andExpr (OR andExpr)*;
-
-// Logical AND
-andExpr: eqExpr (AND eqExpr)*;
-
-// Equality
-eqExpr: relExpr ((EQ | NEQ) relExpr)*;
-
-// Relational
-relExpr: addExpr ((LT | GT | LE | GE) addExpr)*;
-
-// Additive
-addExpr: mulExpr ((PLUS | MINUS) mulExpr)*;
-
-// Multiplicative
-mulExpr: unaryExpr ((MUL | DIV | MOD) unaryExpr)*;
-
-// Unary (prefix)
-unaryExpr: (NOT | MINUS | PLUS | PLUS_PLUS | MINUS_MINUS) unaryExpr
-         | postfixExpr
+statement: assign_statement SEMI
+         | var_statement SEMI
+         | if_statement
+         | while_statement
+         | for_statement
+         | switch_statement
+         | break_statement
+         | continue_statement
+         | return_statement
+         | block_statement
+         | expression_statement
          ;
 
-// Postfix
-postfixExpr: primaryExpr (PLUS_PLUS | MINUS_MINUS | DOT ID | LPAREN argList? RPAREN)*;
+// Variable declaration
+var_statement: (AUTO | explicit_type) ID (ASSIGN var_initializer)?;
 
-// Primary
-primaryExpr: ID
-           | INT_LIT
-           | FLOAT_LIT
-           | STRING_LIT
-           | LPAREN expr RPAREN
-           | structLit
+var_initializer: expression | struct_initializer;
+
+struct_initializer: LBRACE list_expression? RBRACE;
+
+// Assignment statement
+assign_statement: lvalue ASSIGN expression;
+
+lvalue: ID (DOT ID)*;
+
+// If statement
+if_statement: IF LPAREN expression RPAREN statement (ELSE statement)?;
+
+// While statement
+while_statement: WHILE LPAREN expression RPAREN statement;
+
+// For statement
+for_statement: FOR LPAREN for_init? SEMI expression? SEMI for_update? RPAREN statement;
+
+for_init: var_statement 
+        | assign_statement
+        ;
+
+for_update: assign_statement
+          | lvalue (INC | DEC)
+          | (INC | DEC) lvalue
+          ;
+
+// Switch statement - linh hoạt: default có thể ở giữa các case
+switch_statement: SWITCH LPAREN expression RPAREN 
+                  LBRACE 
+                      switch_case* 
+                      switch_default? 
+                      switch_case* 
+                  RBRACE;
+
+switch_case: switch_label+ list_statement?;
+
+switch_default: DEFAULT COLON list_statement?;
+
+switch_label: CASE expression COLON;
+
+// Simple statements
+break_statement: BREAK SEMI;
+continue_statement: CONTINUE SEMI;
+return_statement: RETURN expression? SEMI;
+expression_statement: expression1 SEMI;
+
+// -------------------- EXPRESSIONS --------------------
+// Precedence từ thấp đến cao (top to bottom)
+
+expression: assign_expression | expression1;
+
+assign_expression: lvalue ASSIGN expression;
+
+list_expression: expression COMMA list_expression | expression;
+
+// Logical OR (lowest precedence after assignment)
+expression1: expression1 OR expression2 | expression2;
+
+// Logical AND
+expression2: expression2 AND expression3 | expression3;
+
+// Equality
+expression3: expression3 (EQ | NEQ) expression4 | expression4;
+
+// Relational
+expression4: expression4 (LT | LE | GT | GE) expression5 | expression5;
+
+// Additive
+expression5: expression5 (PLUS | MINUS) expression6 | expression6;
+
+// Multiplicative
+expression6: expression6 (MUL | DIV | MOD) expression7 | expression7;
+
+// Unary (prefix): ! - +
+expression7: (NOT | PLUS | MINUS) expression7
+           | prefix_incdec
            ;
 
-// Struct literal
-structLit: LBRACE (expr (COMMA expr)*)? RBRACE;
+// Prefix increment/decrement: ++x, --x
+prefix_incdec: (INC | DEC) prefix_incdec 
+             | expression9
+             ;
 
-// Argument list
-argList: expr (COMMA expr)*;
+// Postfix and primary
+expression9: postfix_expr
+           | member_access
+           | call_expr
+           | expression_primary
+           ;
+
+// Postfix increment/decrement: x++, x--
+postfix_expr: (member_access | ID | literal | LPAREN expression RPAREN) (INC | DEC)+;
+
+// Function call
+call_expr: ID LPAREN list_expression? RPAREN;
+
+// Member access: obj.member.submember
+member_access: ID (DOT ID)+;
+
+// Primary expressions
+expression_primary: ID 
+                  | literal 
+                  | LPAREN expression RPAREN
+                  ;
+
+// Literals
+literal: INT_LIT | FLOAT_LIT | STRING_LIT | struct_initializer;
 
 // ============================================================
 // LEXER RULES
 // ============================================================
 
-// -------------------- KEYWORDS (must be before ID) --------------------
-AUTO: 'auto';
-BREAK: 'break';
-CASE: 'case';
-CONTINUE: 'continue';
-DEFAULT: 'default';
-ELSE: 'else';
-FLOAT: 'float';
-FOR: 'for';
-IF: 'if';
-INT: 'int';
-RETURN: 'return';
-STRING: 'string';
-STRUCT: 'struct';
-SWITCH: 'switch';
-VOID: 'void';
-WHILE: 'while';
+// -------------------- KEYWORDS (phải đặt TRƯỚC ID) --------------------
+AUTO     : 'auto';
+BREAK    : 'break';
+CASE     : 'case';
+CONTINUE : 'continue';
+DEFAULT  : 'default';
+ELSE     : 'else';
+FLOAT    : 'float';
+FOR      : 'for';
+IF       : 'if';
+INT      : 'int';
+RETURN   : 'return';
+STRING   : 'string';
+STRUCT   : 'struct';
+SWITCH   : 'switch';
+VOID     : 'void';
+WHILE    : 'while';
 
-// -------------------- OPERATORS (longer before shorter) --------------------
+// -------------------- OPERATORS (dài trước, ngắn sau) --------------------
 // Increment/Decrement
-PLUS_PLUS: '++';
-MINUS_MINUS: '--';
+INC      : '++';
+DEC      : '--';
 
-// Relational (2 chars first)
-LE: '<=';
-GE: '>=';
-EQ: '==';
-NEQ: '!=';
+// Relational (2 chars trước)
+EQ       : '==';
+NEQ      : '!=';
+LE       : '<=';
+GE       : '>=';
 
 // Logical (2 chars)
-AND: '&&';
-OR: '||';
+OR       : '||';
+AND      : '&&';
 
 // Single char operators
-PLUS: '+';
-MINUS: '-';
-MUL: '*';
-DIV: '/';
-MOD: '%';
-LT: '<';
-GT: '>';
-NOT: '!';
-ASSIGN: '=';
-DOT: '.';
+PLUS     : '+';
+MINUS    : '-';
+MUL      : '*';
+DIV      : '/';
+MOD      : '%';
+LT       : '<';
+GT       : '>';
+NOT      : '!';
+ASSIGN   : '=';
+DOT      : '.';
 
 // -------------------- SEPARATORS --------------------
-LPAREN: '(';
-RPAREN: ')';
-LBRACE: '{';
-RBRACE: '}';
-LBRACKET: '[';
-RBRACKET: ']';
-SEMI: ';';
-COMMA: ',';
-COLON: ':';
+LBRACE   : '{';
+RBRACE   : '}';
+LPAREN   : '(';
+RPAREN   : ')';
+SEMI     : ';';
+COMMA    : ',';
+COLON    : ':';
 
 // -------------------- LITERALS --------------------
+// ⚠️ QUAN TRỌNG: FLOAT_LIT phải đặt TRƯỚC INT_LIT
+// Vì với input "3.14", nếu INT_LIT trước sẽ match "3" trước
 
-// Float literal - must be before INT_LIT
-FLOAT_LIT: DIGIT+ '.' DIGIT* EXPONENT?
-         | DIGIT* '.' DIGIT+ EXPONENT?
-         | DIGIT+ EXPONENT
-         ;
+FLOAT_LIT
+    : [0-9]+ '.' [0-9]* EXPONENT?
+    | '.' [0-9]+ EXPONENT?
+    | [0-9]+ EXPONENT
+    ;
 
-// Integer literal
-INT_LIT: DIGIT+;
+INT_LIT: [0-9]+;
 
-// String literal - valid string
-STRING_LIT: '"' STRING_CHAR* '"';
+// String literal - tự động bỏ dấu " ở đầu/cuối
+STRING_LIT: '"' STR_CHAR* '"' { self.text = self.text[1:-1] };
 
-// -------------------- IDENTIFIER (must be after keywords) --------------------
-ID: (LETTER | '_') (LETTER | DIGIT | '_')*;
+// -------------------- IDENTIFIER (phải sau keywords) --------------------
+ID: [a-zA-Z_][a-zA-Z0-9_]*;
 
 // -------------------- WHITESPACE & COMMENTS --------------------
 WS: [ \t\r\n\f]+ -> skip;
@@ -225,33 +264,29 @@ LINE_COMMENT: '//' ~[\r\n]* -> skip;
 
 BLOCK_COMMENT: '/*' .*? '*/' -> skip;
 
-// -------------------- ERROR TOKENS (must be last) --------------------
+// -------------------- ERROR TOKENS (phải đặt CUỐI CÙNG) --------------------
 
-// Illegal escape in string - must be before UNCLOSE_STRING
-ILLEGAL_ESCAPE: '"' STRING_CHAR* ESC_ILLEGAL
-    {
-self.text = self.text[1:]
-    };
+// Illegal escape trong string - phải trước UNCLOSE_STRING
+ILLEGAL_ESCAPE: '"' STR_CHAR* ESC_ILLEGAL {
+    self.text = self.text[1:]
+};
 
-// Unclosed string
-UNCLOSE_STRING: '"' STRING_CHAR*
-    {
-self.text = self.text[1:]
-    };
+// Unclosed string - string không có dấu " đóng
+UNCLOSE_STRING: '"' STR_CHAR* ('\r\n' | '\n' | EOF) {
+    self.text = self.text[1:]
+};
 
-// Unrecognized character - catch all
+// Ký tự không nhận dạng được - catch all
 ERROR_CHAR: .;
 
 // -------------------- FRAGMENTS --------------------
-fragment DIGIT: [0-9];
-fragment LETTER: [a-zA-Z];
-fragment EXPONENT: [eE] [+-]? DIGIT+;
+fragment EXPONENT: [eE] [+-]? [0-9]+;
 
-// String character: any char except quote, backslash, newline, OR valid escape
-fragment STRING_CHAR: ~["\\\r\n] | ESC_VALID;
+// String character: bất kỳ ký tự nào trừ ", \, newline, HOẶC valid escape
+fragment STR_CHAR: ~[\r\n\\"] | ESC_SEQ;
 
-// Valid escape sequences: \b \f \n \r \t \" \\
-fragment ESC_VALID: '\\' [bfnrt"\\];
+// Valid escape sequences: \b \f \r \n \t \" \\
+fragment ESC_SEQ: '\\' [bfrnt"\\];
 
-// Invalid escape sequence (anything else after backslash)
-fragment ESC_ILLEGAL: '\\' ~[bfnrt"\\];
+// Invalid escape sequence (bất kỳ thứ gì khác sau backslash)
+fragment ESC_ILLEGAL: '\\' ~[bfrnt"\\];

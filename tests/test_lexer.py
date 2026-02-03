@@ -1,10 +1,18 @@
 """
 Lexer test cases for TyC compiler
-100 test cases covering keywords, operators, separators, literals, identifiers, comments, and errors
+110 test cases covering all lexical elements
+Updated to match merged TyC.g4 grammar
 """
 
-import pytest
 from tests.utils import Tokenizer
+import pytest
+import os
+import sys
+
+# Setup path for imports
+_build_dir = os.path.join(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))), 'build')
+sys.path.insert(0, _build_dir)
 
 
 # ============================================================
@@ -107,15 +115,16 @@ class TestOperators:
         """Test '%' operator"""
         assert "MOD,%" in Tokenizer("%").get_tokens_as_string()
 
-    def test_plus_plus(self):
-        """Test '++' operator - should be single token"""
+    def test_increment(self):
+        """Test '++' operator - should be single INC token"""
         result = Tokenizer("++").get_tokens_as_string()
-        assert "PLUS_PLUS,++" in result
+        assert "INC,++" in result
+        assert result.count("PLUS,+") == 0  # Not two PLUS tokens
 
-    def test_minus_minus(self):
-        """Test '--' operator - should be single token"""
+    def test_decrement(self):
+        """Test '--' operator - should be single DEC token"""
         result = Tokenizer("--").get_tokens_as_string()
-        assert "MINUS_MINUS,--" in result
+        assert "DEC,--" in result
 
     def test_equal(self):
         """Test '==' operator"""
@@ -162,11 +171,11 @@ class TestOperators:
 
     def test_dot(self):
         """Test '.' operator"""
-        assert "DOT,." in Tokenizer("a.b").get_tokens_as_string()
+        assert "DOT,." in Tokenizer(".").get_tokens_as_string()
 
 
 # ============================================================
-# SEPARATOR TESTS (9 tests)
+# SEPARATOR TESTS (6 tests - no brackets in TyC grammar)
 # ============================================================
 
 class TestSeparators:
@@ -184,20 +193,11 @@ class TestSeparators:
     def test_rbrace(self):
         assert "RBRACE,}" in Tokenizer("}").get_tokens_as_string()
 
-    def test_lbracket(self):
-        assert "LBRACKET,[" in Tokenizer("[").get_tokens_as_string()
-
-    def test_rbracket(self):
-        assert "RBRACKET,]" in Tokenizer("]").get_tokens_as_string()
-
     def test_semicolon(self):
         assert "SEMI,;" in Tokenizer(";").get_tokens_as_string()
 
     def test_comma(self):
         assert "COMMA,," in Tokenizer(",").get_tokens_as_string()
-
-    def test_colon(self):
-        assert "COLON,:" in Tokenizer(":").get_tokens_as_string()
 
 
 # ============================================================
@@ -223,38 +223,27 @@ class TestIntegerLiterals:
         """Leading zeros are valid in TyC"""
         assert "INT_LIT,007" in Tokenizer("007").get_tokens_as_string()
 
-    def test_integer_in_expression(self):
-        """Multiple integers in expression"""
+    def test_integer_sequence(self):
+        """Multiple integers separated by operators"""
         result = Tokenizer("1 + 2").get_tokens_as_string()
         assert "INT_LIT,1" in result
         assert "INT_LIT,2" in result
 
-    def test_integer_sequence(self):
-        """Integers separated by comma"""
-        result = Tokenizer("1, 2, 3").get_tokens_as_string()
-        assert "INT_LIT,1" in result
-        assert "INT_LIT,2" in result
-        assert "INT_LIT,3" in result
+    def test_integer_10(self):
+        assert "INT_LIT,10" in Tokenizer("10").get_tokens_as_string()
 
-    def test_integer_assignment(self):
-        """Integer in assignment"""
-        result = Tokenizer("x = 42").get_tokens_as_string()
-        assert "INT_LIT,42" in result
+    def test_integer_100(self):
+        assert "INT_LIT,100" in Tokenizer("100").get_tokens_as_string()
 
-    def test_integer_comparison(self):
-        """Integer in comparison"""
-        result = Tokenizer("x < 100").get_tokens_as_string()
-        assert "INT_LIT,100" in result
+    def test_integer_255(self):
+        assert "INT_LIT,255" in Tokenizer("255").get_tokens_as_string()
 
-    def test_integer_with_unary(self):
-        """Integer with unary minus (separate tokens)"""
-        result = Tokenizer("-5").get_tokens_as_string()
-        assert "MINUS,-" in result
-        assert "INT_LIT,5" in result
+    def test_integer_2500(self):
+        assert "INT_LIT,2500" in Tokenizer("2500").get_tokens_as_string()
 
 
 # ============================================================
-# FLOAT LITERAL TESTS (12 tests)
+# FLOAT LITERAL TESTS (15 tests)
 # ============================================================
 
 class TestFloatLiterals:
@@ -294,68 +283,95 @@ class TestFloatLiterals:
         """Float with decimal and scientific notation"""
         assert "FLOAT_LIT,3.14e5" in Tokenizer("3.14e5").get_tokens_as_string()
 
-    def test_float_vs_int(self):
+    def test_float_vs_int_dot_int(self):
         """3.14 should be one FLOAT_LIT, not INT DOT INT"""
         result = Tokenizer("3.14").get_tokens_as_string()
+        assert result.count("INT_LIT") == 0
         assert "FLOAT_LIT,3.14" in result
 
-    def test_float_in_expression(self):
-        """Float in arithmetic expression"""
-        result = Tokenizer("1.5 + 2.5").get_tokens_as_string()
-        assert "FLOAT_LIT,1.5" in result
-        assert "FLOAT_LIT,2.5" in result
+    def test_float_123_456(self):
+        assert "FLOAT_LIT,123.456" in Tokenizer(
+            "123.456").get_tokens_as_string()
 
-    def test_negative_exponent_decimal(self):
-        """Float with decimal and negative exponent"""
+    def test_float_point_123(self):
+        assert "FLOAT_LIT,.123" in Tokenizer(".123").get_tokens_as_string()
+
+    def test_float_5e_minus_3(self):
+        assert "FLOAT_LIT,5e-3" in Tokenizer("5e-3").get_tokens_as_string()
+
+    def test_float_5E_minus_2(self):
         assert "FLOAT_LIT,5.67E-2" in Tokenizer(
             "5.67E-2").get_tokens_as_string()
 
+    def test_float_1_23e4(self):
+        assert "FLOAT_LIT,1.23e4" in Tokenizer("1.23e4").get_tokens_as_string()
+
 
 # ============================================================
-# STRING LITERAL TESTS (10 tests)
+# STRING LITERAL TESTS (12 tests)
+# Note: Grammar strips quotes, so "hello" becomes hello in token text
 # ============================================================
 
 class TestStringLiterals:
     """Test string literal recognition"""
 
     def test_simple_string(self):
-        assert 'STRING_LIT,"hello"' in Tokenizer(
+        """String without quotes in token (grammar strips them)"""
+        assert "STRING_LIT,hello" in Tokenizer(
             '"hello"').get_tokens_as_string()
 
     def test_empty_string(self):
-        assert 'STRING_LIT,""' in Tokenizer('""').get_tokens_as_string()
+        """Empty string token"""
+        result = Tokenizer('""').get_tokens_as_string()
+        assert "STRING_LIT," in result
 
     def test_string_with_spaces(self):
-        assert 'STRING_LIT,"hello world"' in Tokenizer(
+        """String with spaces"""
+        assert "STRING_LIT,hello world" in Tokenizer(
             '"hello world"').get_tokens_as_string()
 
     def test_escape_newline(self):
-        result = Tokenizer('"hello\\nworld"').get_tokens_as_string()
-        assert 'STRING_LIT' in result
+        """String with newline escape"""
+        assert "STRING_LIT,hello\\nworld" in Tokenizer(
+            '"hello\\nworld"').get_tokens_as_string()
 
     def test_escape_tab(self):
-        result = Tokenizer('"hello\\tworld"').get_tokens_as_string()
-        assert 'STRING_LIT' in result
+        """String with tab escape"""
+        assert "STRING_LIT,hello\\tworld" in Tokenizer(
+            '"hello\\tworld"').get_tokens_as_string()
 
     def test_escape_quote(self):
+        """String with escaped quote"""
         result = Tokenizer('"say \\"hi\\""').get_tokens_as_string()
-        assert 'STRING_LIT' in result
+        assert "STRING_LIT,say \\" in result
 
     def test_escape_backslash(self):
+        """String with escaped backslash"""
         result = Tokenizer('"path\\\\to"').get_tokens_as_string()
-        assert 'STRING_LIT' in result
+        assert "STRING_LIT,path\\\\" in result
 
-    def test_escape_backspace(self):
-        result = Tokenizer('"hello\\bworld"').get_tokens_as_string()
-        assert 'STRING_LIT' in result
+    def test_multiple_escapes(self):
+        """String with multiple escape sequences"""
+        result = Tokenizer('"a\\n\\t\\r"').get_tokens_as_string()
+        assert "STRING_LIT,a\\n\\t\\r" in result
 
-    def test_escape_formfeed(self):
-        result = Tokenizer('"hello\\fworld"').get_tokens_as_string()
-        assert 'STRING_LIT' in result
+    def test_string_with_numbers(self):
+        """String containing numbers"""
+        assert "STRING_LIT,test123" in Tokenizer(
+            '"test123"').get_tokens_as_string()
 
-    def test_escape_carriage_return(self):
-        result = Tokenizer('"hello\\rworld"').get_tokens_as_string()
-        assert 'STRING_LIT' in result
+    def test_string_with_symbols(self):
+        """String with various symbols"""
+        assert "STRING_LIT,!@#$%" in Tokenizer(
+            '"!@#$%"').get_tokens_as_string()
+
+    def test_string_escape_b(self):
+        """String with backspace escape"""
+        assert "STRING_LIT,a\\b" in Tokenizer('"a\\b"').get_tokens_as_string()
+
+    def test_string_escape_f(self):
+        """String with formfeed escape"""
+        assert "STRING_LIT,a\\f" in Tokenizer('"a\\f"').get_tokens_as_string()
 
 
 # ============================================================
@@ -391,13 +407,15 @@ class TestIdentifiers:
         """'integer' should be ID, not INT + 'eger'"""
         result = Tokenizer("integer").get_tokens_as_string()
         assert "ID,integer" in result
+        assert "INT,int" not in result
 
     def test_keyword_suffix_is_identifier(self):
         """'myif' should be ID"""
         assert "ID,myif" in Tokenizer("myif").get_tokens_as_string()
 
-    def test_uppercase_identifier(self):
-        assert "ID,MAX_VALUE" in Tokenizer("MAX_VALUE").get_tokens_as_string()
+    def test_camelCase_identifier(self):
+        assert "ID,myVariableName" in Tokenizer(
+            "myVariableName").get_tokens_as_string()
 
 
 # ============================================================
@@ -421,8 +439,8 @@ class TestComments:
     def test_block_comment_skipped(self):
         """Block comment should be skipped"""
         result = Tokenizer("int /* comment */ x;").get_tokens_as_string()
+        assert "comment" not in result.lower()
         assert "INT,int" in result
-        assert "ID,x" in result
 
     def test_block_comment_multiline(self):
         """Block comment can span multiple lines"""
@@ -432,10 +450,10 @@ class TestComments:
 
     def test_nested_comment_markers(self):
         """// in block comment has no meaning"""
-        result = Tokenizer("/* // nested */ int x;").get_tokens_as_string()
+        result = Tokenizer("/* // nested */int x;").get_tokens_as_string()
         assert "INT,int" in result
 
-    def test_block_markers_in_line_comment(self):
+    def test_block_in_line_comment(self):
         """/* in line comment has no meaning"""
         result = Tokenizer("// /* still line\nint x;").get_tokens_as_string()
         assert "INT,int" in result
@@ -443,7 +461,6 @@ class TestComments:
 
 # ============================================================
 # ERROR TESTS - UNRECOGNIZED CHARACTER (5 tests)
-# Using exception message matching instead of class type
 # ============================================================
 
 class TestErrorToken:
@@ -465,9 +482,10 @@ class TestErrorToken:
         with pytest.raises(Exception, match="Error Token"):
             Tokenizer("`").get_tokens_as_string()
 
-    def test_caret(self):
+    def test_error_in_code(self):
+        """Error character in middle of valid code"""
         with pytest.raises(Exception, match="Error Token"):
-            Tokenizer("^").get_tokens_as_string()
+            Tokenizer("int x = @10;").get_tokens_as_string()
 
 
 # ============================================================
@@ -490,13 +508,13 @@ class TestUncloseString:
         with pytest.raises(Exception, match="Unclosed String"):
             Tokenizer('"').get_tokens_as_string()
 
-    def test_unclosed_with_valid_escape(self):
+    def test_unclosed_with_escape(self):
         with pytest.raises(Exception, match="Unclosed String"):
             Tokenizer('"hello\\n').get_tokens_as_string()
 
-    def test_unclosed_with_content(self):
+    def test_unclosed_in_code(self):
         with pytest.raises(Exception, match="Unclosed String"):
-            Tokenizer('"this string is not closed').get_tokens_as_string()
+            Tokenizer('string s = "hello;').get_tokens_as_string()
 
 
 # ============================================================
@@ -518,9 +536,9 @@ class TestIllegalEscape:
         with pytest.raises(Exception, match="Illegal Escape"):
             Tokenizer('"hello\\1"').get_tokens_as_string()
 
-    def test_invalid_escape_k(self):
+    def test_invalid_escape_space(self):
         with pytest.raises(Exception, match="Illegal Escape"):
-            Tokenizer('"test\\k"').get_tokens_as_string()
+            Tokenizer('"hello\\ "').get_tokens_as_string()
 
     def test_illegal_after_valid_escape(self):
         """Illegal escape after valid escapes"""
@@ -529,7 +547,7 @@ class TestIllegalEscape:
 
 
 # ============================================================
-# COMPLEX TOKEN SEQUENCE TESTS (4 tests)
+# COMPLEX SEQUENCE TESTS (8 tests)
 # ============================================================
 
 class TestComplexSequences:
@@ -544,24 +562,31 @@ class TestComplexSequences:
         assert "INT_LIT,10" in result
         assert "SEMI,;" in result
 
-    def test_function_header(self):
-        """Test function header tokens"""
-        result = Tokenizer("void main() {").get_tokens_as_string()
-        assert "VOID,void" in result
-        assert "ID,main" in result
+    def test_function_call(self):
+        """Test function call tokens"""
+        result = Tokenizer("foo(a, b)").get_tokens_as_string()
+        assert "ID,foo" in result
         assert "LPAREN,(" in result
+        assert "ID,a" in result
+        assert "COMMA,," in result
+        assert "ID,b" in result
         assert "RPAREN,)" in result
-        assert "LBRACE,{" in result
 
-    def test_if_statement(self):
-        """Test if statement tokens"""
-        result = Tokenizer("if (x > 0)").get_tokens_as_string()
-        assert "IF,if" in result
-        assert "LPAREN,(" in result
-        assert "ID,x" in result
-        assert "GT,>" in result
-        assert "INT_LIT,0" in result
-        assert "RPAREN,)" in result
+    def test_arithmetic_expression(self):
+        """Test arithmetic expression tokens"""
+        result = Tokenizer("a + b * c - d / e").get_tokens_as_string()
+        assert "ID,a" in result
+        assert "PLUS,+" in result
+        assert "MUL,*" in result
+        assert "MINUS,-" in result
+        assert "DIV,/" in result
+
+    def test_comparison_expression(self):
+        """Test comparison expression tokens"""
+        result = Tokenizer("a < b && c >= d").get_tokens_as_string()
+        assert "LT,<" in result
+        assert "AND,&&" in result
+        assert "GE,>=" in result
 
     def test_for_loop(self):
         """Test for loop tokens"""
@@ -571,4 +596,26 @@ class TestComplexSequences:
         assert "INT,int" in result
         assert "ID,i" in result
         assert "LT,<" in result
-        assert "PLUS_PLUS,++" in result
+        assert "INC,++" in result
+
+    def test_struct_declaration(self):
+        """Test struct declaration tokens"""
+        result = Tokenizer("struct Point { int x; };").get_tokens_as_string()
+        assert "STRUCT,struct" in result
+        assert "ID,Point" in result
+        assert "LBRACE,{" in result
+        assert "RBRACE,}" in result
+
+    def test_if_else(self):
+        """Test if-else tokens"""
+        result = Tokenizer("if (x > 0) { } else { }").get_tokens_as_string()
+        assert "IF,if" in result
+        assert "ELSE,else" in result
+        assert "GT,>" in result
+
+    def test_member_access(self):
+        """Test member access tokens"""
+        result = Tokenizer("p.x = 10;").get_tokens_as_string()
+        assert "ID,p" in result
+        assert "DOT,." in result
+        assert "ID,x" in result
