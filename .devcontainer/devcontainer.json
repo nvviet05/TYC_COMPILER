@@ -1,10 +1,13 @@
 {
     "name": "TyC Compiler",
-    "image": "mcr.microsoft.com/devcontainers/python:3.10",
+    "image": "mcr.microsoft.com/devcontainers/python:3.12",
     "features": {
-        "ghcr.io/devcontainers/features/git:1": {}
+        "ghcr.io/devcontainers/features/git:1": {},
+        "ghcr.io/devcontainers/features/java:1": {
+            "version": "21"
+        }
     },
-    "postCreateCommand": "pip install --upgrade pip && pip install -r requirements.txt",
+    "postCreateCommand": "python -m venv venv && . venv/bin/activate && pip install -U pip && pip install -r requirements.txt",
     "customizations": {
         "vscode": {
             "extensions": [

@@ -1,3 +1,33 @@
+## Environment Setup
+
+This project requires Java and Python 3.12 to run the setup script. If your environment is Debian/Ubuntu-based, you can install them with:
+
+- Install Java (OpenJDK 17+)
+    - sudo apt-get update
+    - sudo apt-get install -y default-jdk
+    - (or) sudo apt-get install -y openjdk-17-jdk
+
+- Install Python 3.12
+    - sudo apt-get update
+    - sudo apt-get install -y python3.12
+    - If Python 3.12 is not available in your package repo, build from source:
+            - sudo apt-get install -y build-essential libssl-dev libreadline-dev zlib1g-dev libffi-dev libbz2-dev libsqlite3-dev wget tar
+            - cd /tmp
+            - PY=3.12.0
+            - wget https://www.python.org/ftp/python/${PY}/Python-${PY}.tar.xz
+            - tar -xf Python-${PY}.tar.xz
+            - cd Python-${PY}
+            - ./configure --enable-optimizations
+            - make -j"$(nproc)"
+            - sudo make altinstall
+
+- Re-run setup
+    - python3.12 run.py setup
+
+After this, verify the versions:
+- java -version
+- python3.12 --version
+
 # TyC Programming Language Specification
 **Version 1.0 - January 2026**
 
