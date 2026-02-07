@@ -37,7 +37,6 @@ structs: STRUCT ID LBRACE struct_member* RBRACE SEMI;
 struct_member: explicit_type ID SEMI;
 
 // -------------------- FUNCTION DECLARATION --------------------
-// Hỗ trợ cả return type tường minh và inferred (bỏ qua return type)
 functions: (return_type ID | ID) LPAREN parameter_list? RPAREN block_statement;
 
 return_type: explicit_type | VOID;
@@ -56,8 +55,7 @@ block_statement: LBRACE list_statement? RBRACE;
 
 list_statement: statement list_statement | statement;
 
-statement: assign_statement SEMI
-         | var_statement SEMI
+statement: var_statement SEMI
          | if_statement
          | while_statement
          | for_statement
@@ -66,7 +64,7 @@ statement: assign_statement SEMI
          | continue_statement
          | return_statement
          | block_statement
-         | expression_statement
+         | expression SEMI
          ;
 
 // Variable declaration
@@ -75,11 +73,6 @@ var_statement: (AUTO | explicit_type) ID (ASSIGN var_initializer)?;
 var_initializer: expression | struct_initializer;
 
 struct_initializer: LBRACE list_expression? RBRACE;
-
-// Assignment statement
-assign_statement: lvalue ASSIGN expression;
-
-lvalue: ID (DOT ID)*;
 
 // If statement
 if_statement: IF LPAREN expression RPAREN statement (ELSE statement)?;
@@ -90,16 +83,19 @@ while_statement: WHILE LPAREN expression RPAREN statement;
 // For statement
 for_statement: FOR LPAREN for_init? SEMI expression? SEMI for_update? RPAREN statement;
 
-for_init: var_statement 
-        | assign_statement
+for_init: var_statement
+        | lvalue ASSIGN expression
         ;
 
-for_update: assign_statement
-          | lvalue (INC | DEC)
-          | (INC | DEC) lvalue
+for_update: lvalue ASSIGN expression
+          | (INC | DEC)+ for_operand (INC | DEC)*
+          | for_operand (INC | DEC)+
           ;
 
-// Switch statement - linh hoạt: default có thể ở giữa các case
+// Broader operand for for-update inc/dec: any primary/call with optional member access
+for_operand: (call_expr | expression_primary) (DOT ID)*;
+
+// Switch statement
 switch_statement: SWITCH LPAREN expression RPAREN 
                   LBRACE 
                       switch_case* 
@@ -117,18 +113,21 @@ switch_label: CASE expression COLON;
 break_statement: BREAK SEMI;
 continue_statement: CONTINUE SEMI;
 return_statement: RETURN expression? SEMI;
-expression_statement: expression1 SEMI;
 
 // -------------------- EXPRESSIONS --------------------
-// Precedence từ thấp đến cao (top to bottom)
+// Precedence from low to high (top to bottom)
 
-expression: assign_expression | expression1;
+// Assignment (right-associative, lowest precedence)
+// LHS restricted to lvalue: bare ID with optional member access, or expressions that end with .ID
+expression: lvalue ASSIGN expression | expression1;
 
-assign_expression: lvalue ASSIGN expression;
+lvalue: ID (DOT ID)*
+      | (call_expr | LPAREN expression RPAREN | literal) (DOT ID)+
+      ;
 
 list_expression: expression COMMA list_expression | expression;
 
-// Logical OR (lowest precedence after assignment)
+// Logical OR
 expression1: expression1 OR expression2 | expression2;
 
 // Logical AND
@@ -156,21 +155,12 @@ prefix_incdec: (INC | DEC) prefix_incdec
              | expression9
              ;
 
-// Postfix and primary
-expression9: postfix_expr
-           | member_access
-           | call_expr
-           | expression_primary
-           ;
-
-// Postfix increment/decrement: x++, x--
-postfix_expr: (member_access | ID | literal | LPAREN expression RPAREN) (INC | DEC)+;
+// Postfix, member access, and primary
+// Member access chain first, then optional postfix inc/dec at the end only
+expression9: (call_expr | expression_primary) (DOT ID)* (INC | DEC)*;
 
 // Function call
 call_expr: ID LPAREN list_expression? RPAREN;
-
-// Member access: obj.member.submember
-member_access: ID (DOT ID)+;
 
 // Primary expressions
 expression_primary: ID 
@@ -185,7 +175,7 @@ literal: INT_LIT | FLOAT_LIT | STRING_LIT | struct_initializer;
 // LEXER RULES
 // ============================================================
 
-// -------------------- KEYWORDS (phải đặt TRƯỚC ID) --------------------
+// -------------------- KEYWORDS --------------------
 AUTO     : 'auto';
 BREAK    : 'break';
 CASE     : 'case';
@@ -203,22 +193,18 @@ SWITCH   : 'switch';
 VOID     : 'void';
 WHILE    : 'while';
 
-// -------------------- OPERATORS (dài trước, ngắn sau) --------------------
-// Increment/Decrement
+// -------------------- OPERATORS --------------------
 INC      : '++';
 DEC      : '--';
 
-// Relational (2 chars trước)
 EQ       : '==';
 NEQ      : '!=';
 LE       : '<=';
 GE       : '>=';
 
-// Logical (2 chars)
 OR       : '||';
 AND      : '&&';
 
-// Single char operators
 PLUS     : '+';
 MINUS    : '-';
 MUL      : '*';
@@ -240,9 +226,6 @@ COMMA    : ',';
 COLON    : ':';
 
 // -------------------- LITERALS --------------------
-// ⚠️ QUAN TRỌNG: FLOAT_LIT phải đặt TRƯỚC INT_LIT
-// Vì với input "3.14", nếu INT_LIT trước sẽ match "3" trước
-
 FLOAT_LIT
     : [0-9]+ '.' [0-9]* EXPONENT?
     | '.' [0-9]+ EXPONENT?
@@ -251,10 +234,9 @@ FLOAT_LIT
 
 INT_LIT: [0-9]+;
 
-// String literal - tự động bỏ dấu " ở đầu/cuối
 STRING_LIT: '"' STR_CHAR* '"' { self.text = self.text[1:-1] };
 
-// -------------------- IDENTIFIER (phải sau keywords) --------------------
+// -------------------- IDENTIFIER --------------------
 ID: [a-zA-Z_][a-zA-Z0-9_]*;
 
 // -------------------- WHITESPACE & COMMENTS --------------------
@@ -264,29 +246,29 @@ LINE_COMMENT: '//' ~[\r\n]* -> skip;
 
 BLOCK_COMMENT: '/*' .*? '*/' -> skip;
 
-// -------------------- ERROR TOKENS (phải đặt CUỐI CÙNG) --------------------
+// -------------------- ERROR TOKENS --------------------
 
-// Illegal escape trong string - phải trước UNCLOSE_STRING
+// Illegal escape in string - must be before UNCLOSE_STRING
 ILLEGAL_ESCAPE: '"' STR_CHAR* ESC_ILLEGAL {
     self.text = self.text[1:]
 };
 
-// Unclosed string - string không có dấu " đóng
-UNCLOSE_STRING: '"' STR_CHAR* ('\r\n' | '\n' | EOF) {
+// Unclosed string - string without closing quote
+// The optional '\\' handles a trailing backslash before newline/EOF
+UNCLOSE_STRING: '"' STR_CHAR* '\\'? ('\r\n' | '\n' | EOF) {
     self.text = self.text[1:]
 };
 
-// Ký tự không nhận dạng được - catch all
+// Unrecognized character - catch all
 ERROR_CHAR: .;
 
 // -------------------- FRAGMENTS --------------------
 fragment EXPONENT: [eE] [+-]? [0-9]+;
 
-// String character: bất kỳ ký tự nào trừ ", \, newline, HOẶC valid escape
 fragment STR_CHAR: ~[\r\n\\"] | ESC_SEQ;
 
-// Valid escape sequences: \b \f \r \n \t \" \\
 fragment ESC_SEQ: '\\' [bfrnt"\\];
 
-// Invalid escape sequence (bất kỳ thứ gì khác sau backslash)
-fragment ESC_ILLEGAL: '\\' ~[bfrnt"\\];
+// Invalid escape: backslash followed by anything except valid escapes AND except newlines
+// (backslash before newline is an unclosed string, not an illegal escape)
+fragment ESC_ILLEGAL: '\\' ~[bfrnt"\\\r\n];
