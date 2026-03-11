@@ -257,6 +257,10 @@ ILLEGAL_ESCAPE: '"' STR_CHAR* ESC_ILLEGAL {
 // The optional '\\' handles a trailing backslash before newline/EOF
 UNCLOSE_STRING: '"' STR_CHAR* '\\'? ('\r\n' | '\n' | EOF) {
     self.text = self.text[1:]
+    if self.text.endswith('\n'):
+        self.text = self.text[:-1]
+    if self.text.endswith('\r'):
+        self.text = self.text[:-1]
 };
 
 // Unrecognized character - catch all
